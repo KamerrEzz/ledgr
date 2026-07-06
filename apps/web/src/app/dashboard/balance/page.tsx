@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTenant } from "@/lib/tenant-context";
 import { apiFetch } from "@/lib/api";
 import { formatCents, formatDate } from "@/lib/format";
 
@@ -23,16 +22,14 @@ interface BalanceHistory {
 }
 
 export default function BalancePage() {
-  const { tenantId } = useTenant();
   const [balance, setBalance] = useState<Balance | null>(null);
   const [history, setHistory] = useState<BalanceHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!tenantId) return;
     Promise.all([
-      apiFetch<Balance>("/api/balance", {}, tenantId),
-      apiFetch<BalanceHistory>("/api/balance/history", {}, tenantId),
+      apiFetch<Balance>("/api/balance"),
+      apiFetch<BalanceHistory>("/api/balance/history"),
     ])
       .then(([bal, hist]) => {
         setBalance(bal);
@@ -40,7 +37,7 @@ export default function BalancePage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [tenantId]);
+  }, []);
 
   if (loading) return <div className="text-slate-500">Loading...</div>;
 

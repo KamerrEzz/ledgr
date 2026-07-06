@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTenant } from "@/lib/tenant-context";
 import { apiFetch } from "@/lib/api";
 import { formatCents, formatDate, statusColor } from "@/lib/format";
 
@@ -39,7 +38,6 @@ interface BalanceHistory {
 }
 
 export default function DashboardPage() {
-  const { tenantId } = useTenant();
   const [resources, setResources] = useState<Resource[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [balance, setBalance] = useState<Balance | null>(null);
@@ -47,13 +45,12 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!tenantId) return;
     setLoading(true);
     Promise.all([
-      apiFetch<Resource[]>("/api/resources", {}, tenantId),
-      apiFetch<Order[]>("/api/orders", {}, tenantId),
-      apiFetch<Balance>("/api/balance", {}, tenantId),
-      apiFetch<BalanceHistory>("/api/balance/history", {}, tenantId),
+      apiFetch<Resource[]>("/api/resources"),
+      apiFetch<Order[]>("/api/orders"),
+      apiFetch<Balance>("/api/balance"),
+      apiFetch<BalanceHistory>("/api/balance/history"),
     ])
       .then(([res, ord, bal, hist]) => {
         setResources(res);
@@ -63,7 +60,7 @@ export default function DashboardPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [tenantId]);
+  }, []);
 
   if (loading) {
     return <div className="text-slate-500">Loading...</div>;

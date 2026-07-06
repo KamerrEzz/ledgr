@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { randomUUID, createHash } from "node:crypto";
-import { sql } from "@ledgr/db";
+import { db, schema } from "@ledgr/db";
+import { eq, sql, count } from "drizzle-orm";
 import { canTransition } from "../services/order-state-machine.js";
 import { createSplitPaymentEntries } from "../services/ledger.js";
 
@@ -16,12 +17,19 @@ interface WebhookReceiveBody {
 
 const webhooksRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/", async () => {
-    return sql`SELECT * FROM webhook_events ORDER BY created_at DESC LIMIT 100`;
+    return db
+      .select()
+      .from(schema.webhookEvents)
+      .orderBy(schema.webhookEvents.createdAt)
+      .limit(100);
   });
 
   fastify.get("/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const [event] = await sql`SELECT * FROM webhook_events WHERE id = ${id}`;
+    const [event] = await db
+      .select()
+      .from(schema.webhookEvents)
+      .where(eq(schema.webhookEvents.id, id));
     if (!event) {
       reply.code(404);
       return { error: "Webhook event not found" };
@@ -29,7 +37,10 @@ const webhooksRoutes: FastifyPluginAsync = async (fastify) => {
     return event;
   });
 
-  fastify.post<{ Body: WebhookReceiveBody }>("/receive", async (request, reply) => {
+  fastify.post<{ Body: WebhookReceiveBody }>(
+    "/receive",
+    { config: { rateLimit: false } },
+    async (request, reply) => {
     const webhookIdHeader = request.headers["x-webhook-id"];
     const source = request.headers["x-webhook-source"] || "unknown";
     const body = request.body;
@@ -43,12 +54,17 @@ const webhooksRoutes: FastifyPluginAsync = async (fastify) => {
 
     let eventRow;
     try {
-      const rows = await sql`
-        INSERT INTO webhook_events (source, event_type, payload, idempotency_key, status)
-        VALUES (${source}, ${body.event_type}, ${JSON.stringify(body)}, ${idempotencyKey}, 'received')
-        RETURNING *
-      `;
-      eventRow = rows[0];
+      const [inserted] = await db
+        .insert(schema.webhookEvents)
+        .values({
+          source: source as string,
+          eventType: body.event_type,
+          payload: body as any,
+          idempotencyKey,
+          status: "received",
+        })
+        .returning();
+      eventRow = inserted;
     } catch (err: any) {
       if (err?.code === "23505") {
         return { status: "duplicate" };
@@ -57,35 +73,42 @@ const webhooksRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      await sql`UPDATE webhook_events SET status = 'processing' WHERE id = ${eventRow.id}`;
+      await db
+        .update(schema.webhookEvents)
+        .set({ status: "processing" })
+        .where(eq(schema.webhookEvents.id, eventRow.id));
 
       if (body.event_type === "payment.completed") {
         await processPaymentCompleted(body);
       }
 
-      await sql`
-        UPDATE webhook_events
-        SET status = 'processed', processed_at = now()
-        WHERE id = ${eventRow.id}
-      `;
+      await db
+        .update(schema.webhookEvents)
+        .set({ status: "processed", processedAt: new Date() })
+        .where(eq(schema.webhookEvents.id, eventRow.id));
 
       return { status: "processed" };
     } catch (err: any) {
-      await sql`
-        UPDATE webhook_events
-        SET status = 'failed', error_message = ${err.message || "Processing failed"}
-        WHERE id = ${eventRow.id}
-      `;
+      await db
+        .update(schema.webhookEvents)
+        .set({ status: "failed", errorMessage: err.message || "Processing failed" })
+        .where(eq(schema.webhookEvents.id, eventRow.id));
       return { status: "failed" };
     }
   });
 };
 
 async function processPaymentCompleted(body: WebhookReceiveBody): Promise<void> {
-  await sql.begin(async (tx) => {
-    await tx`SELECT set_config('app.current_tenant_id', ${body.tenant_id}, true)`;
+  await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT set_config('app.current_tenant_id', ${body.tenant_id}, true)`,
+    );
 
-    const [order] = await tx`SELECT * FROM orders WHERE id = ${body.order_id} FOR UPDATE`;
+    const [order] = await tx
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, body.order_id))
+      .for("update");
     if (!order) {
       throw new Error(`Order ${body.order_id} not found`);
     }
@@ -96,15 +119,28 @@ async function processPaymentCompleted(body: WebhookReceiveBody): Promise<void> 
       );
     }
 
-    await tx`UPDATE orders SET status = 'paid', updated_at = now() WHERE id = ${body.order_id}`;
+    await tx
+      .update(schema.orders)
+      .set({ status: "paid", updatedAt: new Date() })
+      .where(eq(schema.orders.id, body.order_id));
 
-    await tx`INSERT INTO order_status_transitions (order_id, tenant_id, from_status, to_status, reason)
-      VALUES (${body.order_id}, ${body.tenant_id}, ${order.status}, 'paid', 'Payment webhook received')`;
+    await tx.insert(schema.orderStatusTransitions).values({
+      orderId: body.order_id,
+      tenantId: body.tenant_id,
+      fromStatus: order.status,
+      toStatus: "paid",
+      reason: "Payment webhook received",
+    });
 
     const totalCents = BigInt(body.amount_cents);
-    const [existingCount] = await tx`SELECT COUNT(*)::int as count FROM ledger_entries WHERE order_id = ${body.order_id}`;
-    if (existingCount.count > 0) {
-      console.warn(`Order ${body.order_id} already has ${existingCount.count} ledger entries, skipping duplicate creation`);
+    const [existingCount] = await tx
+      .select({ count: count() })
+      .from(schema.ledgerEntries)
+      .where(eq(schema.ledgerEntries.orderId, body.order_id));
+    if (existingCount && existingCount.count > 0) {
+      console.warn(
+        `Order ${body.order_id} already has ${existingCount.count} ledger entries, skipping duplicate creation`,
+      );
     } else {
       await createSplitPaymentEntries(
         tx,

@@ -1,3 +1,5 @@
+import { schema } from "@ledgr/db";
+
 export async function createSplitPaymentEntries(
   tx: any,
   orderId: string,
@@ -8,9 +10,23 @@ export async function createSplitPaymentEntries(
   const platformCommission = (totalCents * 10n) / 100n;
   const tenantPayout = totalCents - platformCommission;
 
-  await tx`INSERT INTO ledger_entries (tenant_id, order_id, entry_type, amount_cents, currency, description, metadata)
-    VALUES (${tenantId}, ${orderId}, 'credit', ${tenantPayout}, ${currency}, 'Tenant payout', ${JSON.stringify({ orderId })})`;
+  await tx.insert(schema.ledgerEntries).values({
+    tenantId,
+    orderId,
+    entryType: "credit",
+    amountCents: tenantPayout,
+    currency,
+    description: "Tenant payout",
+    metadata: { orderId },
+  });
 
-  await tx`INSERT INTO ledger_entries (tenant_id, order_id, entry_type, amount_cents, currency, description, metadata)
-    VALUES (${tenantId}, ${orderId}, 'debit', ${platformCommission}, ${currency}, 'Platform commission', ${JSON.stringify({ orderId })})`;
+  await tx.insert(schema.ledgerEntries).values({
+    tenantId,
+    orderId,
+    entryType: "debit",
+    amountCents: platformCommission,
+    currency,
+    description: "Platform commission",
+    metadata: { orderId },
+  });
 }

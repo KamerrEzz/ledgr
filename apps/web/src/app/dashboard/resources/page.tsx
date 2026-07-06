@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTenant } from "@/lib/tenant-context";
 import { apiFetch } from "@/lib/api";
 import { formatCents } from "@/lib/format";
 import DataTable from "@/components/DataTable";
@@ -25,7 +24,6 @@ interface Variant {
 }
 
 export default function ResourcesPage() {
-  const { tenantId } = useTenant();
   const [resources, setResources] = useState<Resource[]>([]);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
   const [variants, setVariants] = useState<Variant[]>([]);
@@ -39,41 +37,39 @@ export default function ResourcesPage() {
   const [variantForm, setVariantForm] = useState({ name: "", price_cents: "", currency: "USD" });
 
   const loadResources = () => {
-    if (!tenantId) return;
-    apiFetch<Resource[]>("/api/resources", {}, tenantId)
+    apiFetch<Resource[]>("/api/resources")
       .then(setResources)
       .catch(console.error)
       .finally(() => setLoading(false));
   };
 
   const loadVariants = (resourceId: string) => {
-    if (!tenantId) return;
-    apiFetch<Variant[]>(`/api/resources/${resourceId}/variants`, {}, tenantId)
+    apiFetch<Variant[]>(`/api/resources/${resourceId}/variants`)
       .then(setVariants)
       .catch(console.error);
   };
 
   useEffect(() => {
     loadResources();
-  }, [tenantId]);
+  }, []);
 
   const handleCreateResource = async () => {
-    if (!tenantId || !resourceForm.name) return;
+    if (!resourceForm.name) return;
     await apiFetch<Resource>("/api/resources", {
       method: "POST",
       body: JSON.stringify(resourceForm),
-    }, tenantId);
+    });
     setShowCreateModal(false);
     setResourceForm({ name: "", description: "" });
     loadResources();
   };
 
   const handleUpdateResource = async () => {
-    if (!tenantId || !editResource) return;
+    if (!editResource) return;
     await apiFetch<Resource>(`/api/resources/${editResource.id}`, {
       method: "PATCH",
       body: JSON.stringify(resourceForm),
-    }, tenantId);
+    });
     setEditResource(null);
     setResourceForm({ name: "", description: "" });
     loadResources();
@@ -83,8 +79,7 @@ export default function ResourcesPage() {
   };
 
   const handleDeleteResource = async (id: string) => {
-    if (!tenantId) return;
-    await apiFetch(`/api/resources/${id}`, { method: "DELETE" }, tenantId);
+    await apiFetch(`/api/resources/${id}`, { method: "DELETE" });
     if (selectedResource?.id === id) {
       setSelectedResource(null);
       setVariants([]);
@@ -93,7 +88,7 @@ export default function ResourcesPage() {
   };
 
   const handleCreateVariant = async () => {
-    if (!tenantId || !selectedResource || !variantForm.name || !variantForm.price_cents) return;
+    if (!selectedResource || !variantForm.name || !variantForm.price_cents) return;
     await apiFetch<Variant>(`/api/resources/${selectedResource.id}/variants`, {
       method: "POST",
       body: JSON.stringify({
@@ -101,14 +96,14 @@ export default function ResourcesPage() {
         price_cents: parseInt(variantForm.price_cents, 10),
         currency: variantForm.currency,
       }),
-    }, tenantId);
+    });
     setShowVariantModal(false);
     setVariantForm({ name: "", price_cents: "", currency: "USD" });
     loadVariants(selectedResource.id);
   };
 
   const handleUpdateVariant = async () => {
-    if (!tenantId || !selectedResource || !editVariant) return;
+    if (!selectedResource || !editVariant) return;
     await apiFetch<Variant>(`/api/resources/${selectedResource.id}/variants/${editVariant.id}`, {
       method: "PATCH",
       body: JSON.stringify({
@@ -116,17 +111,17 @@ export default function ResourcesPage() {
         price_cents: parseInt(variantForm.price_cents, 10),
         currency: variantForm.currency,
       }),
-    }, tenantId);
+    });
     setEditVariant(null);
     setVariantForm({ name: "", price_cents: "", currency: "USD" });
     loadVariants(selectedResource.id);
   };
 
   const handleDeleteVariant = async (variantId: string) => {
-    if (!tenantId || !selectedResource) return;
+    if (!selectedResource) return;
     await apiFetch(`/api/resources/${selectedResource.id}/variants/${variantId}`, {
       method: "DELETE",
-    }, tenantId);
+    });
     loadVariants(selectedResource.id);
   };
 

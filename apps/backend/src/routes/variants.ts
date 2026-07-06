@@ -1,5 +1,9 @@
 import type { FastifyPluginAsync } from "fastify";
+import { db, schema } from "@ledgr/db";
+import { eq } from "drizzle-orm";
 import { withTenantSql } from "../lib/tenant-sql.js";
+import { validate } from "../lib/validate.js";
+import { createVariantSchema, updateVariantSchema } from "../schemas/index.js";
 
 const variantsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/", async (request) => {
@@ -7,7 +11,10 @@ const variantsRoutes: FastifyPluginAsync = async (fastify) => {
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      return tx`SELECT * FROM resource_variants WHERE resource_id = ${resourceId}`;
+      return tx
+        .select()
+        .from(schema.resourceVariants)
+        .where(eq(schema.resourceVariants.resourceId, resourceId));
     });
   });
 
@@ -16,7 +23,10 @@ const variantsRoutes: FastifyPluginAsync = async (fastify) => {
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      const [variant] = await tx`SELECT * FROM resource_variants WHERE id = ${id}`;
+      const [variant] = await tx
+        .select()
+        .from(schema.resourceVariants)
+        .where(eq(schema.resourceVariants.id, id));
       if (!variant) {
         reply.code(404);
         return { error: "Variant not found" };
@@ -27,27 +37,33 @@ const variantsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post("/", async (request, reply) => {
     const { resourceId } = request.params as { resourceId: string };
-    const { name, price_cents, currency, metadata } = request.body as {
-      name: string;
-      price_cents: number | string;
-      currency?: string;
-      metadata?: Record<string, unknown>;
-    };
+    const body = validate(createVariantSchema, request.body, reply);
+    if (!body) return;
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      const [resource] = await tx`SELECT id FROM resources WHERE id = ${resourceId}`;
+      const [resource] = await tx
+        .select({ id: schema.resources.id })
+        .from(schema.resources)
+        .where(eq(schema.resources.id, resourceId));
       if (!resource) {
         reply.code(404);
         return { error: "Resource not found" };
       }
 
-      const priceCents = BigInt(price_cents);
-      const metadataStr = metadata ? JSON.stringify(metadata) : "{}";
+      const priceCents = BigInt(typeof body.price_cents === "string" ? body.price_cents : body.price_cents);
 
-      const [variant] = await tx`INSERT INTO resource_variants (tenant_id, resource_id, name, price_cents, currency, metadata)
-        VALUES (${tenantId}, ${resourceId}, ${name}, ${priceCents}, ${currency ?? "USD"}, ${metadataStr})
-        RETURNING *`;
+      const [variant] = await tx
+        .insert(schema.resourceVariants)
+        .values({
+          tenantId,
+          resourceId,
+          name: body.name,
+          priceCents,
+          currency: body.currency ?? "USD",
+          metadata: body.metadata ?? {},
+        })
+        .returning();
 
       reply.code(201);
       return variant;
@@ -56,36 +72,31 @@ const variantsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch("/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const { name, price_cents, currency, metadata } = request.body as {
-      name?: string;
-      price_cents?: number | string;
-      currency?: string;
-      metadata?: Record<string, unknown>;
-    };
+    const body = validate(updateVariantSchema, request.body, reply);
+    if (!body) return;
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      const [variant] = await tx`SELECT * FROM resource_variants WHERE id = ${id}`;
-      if (!variant) {
+      const [existing] = await tx
+        .select()
+        .from(schema.resourceVariants)
+        .where(eq(schema.resourceVariants.id, id));
+      if (!existing) {
         reply.code(404);
         return { error: "Variant not found" };
       }
 
-      const updatedName = name ?? variant.name;
-      const updatedPriceCents =
-        price_cents !== undefined ? BigInt(price_cents) : BigInt(variant.price_cents);
-      const updatedCurrency = currency ?? variant.currency;
-      const updatedMetadata = metadata
-        ? JSON.stringify(metadata)
-        : JSON.stringify(variant.metadata ?? {});
-
-      const [updated] = await tx`UPDATE resource_variants
-        SET name = ${updatedName},
-            price_cents = ${updatedPriceCents},
-            currency = ${updatedCurrency},
-            metadata = ${updatedMetadata}
-        WHERE id = ${id}
-        RETURNING *`;
+      const [updated] = await tx
+        .update(schema.resourceVariants)
+        .set({
+          name: body.name ?? existing.name,
+          priceCents:
+            body.price_cents !== undefined ? BigInt(typeof body.price_cents === "string" ? body.price_cents : body.price_cents) : existing.priceCents,
+          currency: body.currency ?? existing.currency,
+          metadata: body.metadata ?? existing.metadata,
+        })
+        .where(eq(schema.resourceVariants.id, id))
+        .returning();
       return updated;
     });
   });
@@ -95,7 +106,10 @@ const variantsRoutes: FastifyPluginAsync = async (fastify) => {
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      const [deleted] = await tx`DELETE FROM resource_variants WHERE id = ${id} RETURNING *`;
+      const [deleted] = await tx
+        .delete(schema.resourceVariants)
+        .where(eq(schema.resourceVariants.id, id))
+        .returning();
       if (!deleted) {
         reply.code(404);
         return { error: "Variant not found" };

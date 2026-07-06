@@ -1,18 +1,34 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
+let accessToken: string | null = null;
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
-  tenantId?: string
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string> || {}),
+    ...(options.headers as Record<string, string>),
   };
-  if (tenantId) {
-    headers["x-tenant-id"] = tenantId;
+
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
   }
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
+
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }

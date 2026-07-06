@@ -1,29 +1,43 @@
 import type { FastifyPluginAsync } from "fastify";
+import { db, schema } from "@ledgr/db";
+import { eq, count, desc, sql } from "drizzle-orm";
 import { withTenantSql } from "../lib/tenant-sql.js";
 import { validateLedgerIntegrity } from "../services/ledger-integrity.js";
+import { validate } from "../lib/validate.js";
+import { paginationSchema } from "../schemas/index.js";
 
 const ledgerRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.get("/", async (request) => {
+  fastify.get("/", async (request, reply) => {
+    const query = validate(paginationSchema, request.query, reply);
+    if (!query) return;
     const tenantId = (request as any).tenantId as string;
-    const { page = 1, limit = 50 } = request.query as {
-      page?: number;
-      limit?: number;
-    };
 
     return withTenantSql(tenantId, async (tx) => {
-      const offset = (page - 1) * limit;
+      const offset = (query.page - 1) * query.limit;
 
-      const [countRow] = await tx`SELECT COUNT(*)::int as count FROM ledger_entries`;
-      const total = countRow.count;
+      const [countRow] = await tx
+        .select({ count: count() })
+        .from(schema.ledgerEntries);
+      const total = countRow?.count ?? 0;
 
-      const entries = await tx`
-        SELECT id, tenant_id, order_id, entry_type, amount_cents, currency, description, metadata, created_at
-        FROM ledger_entries
-        ORDER BY created_at DESC
-        LIMIT ${limit} OFFSET ${offset}
-      `;
+      const entries = await tx
+        .select({
+          id: schema.ledgerEntries.id,
+          tenantId: schema.ledgerEntries.tenantId,
+          orderId: schema.ledgerEntries.orderId,
+          entryType: schema.ledgerEntries.entryType,
+          amountCents: schema.ledgerEntries.amountCents,
+          currency: schema.ledgerEntries.currency,
+          description: schema.ledgerEntries.description,
+          metadata: schema.ledgerEntries.metadata,
+          createdAt: schema.ledgerEntries.createdAt,
+        })
+        .from(schema.ledgerEntries)
+        .orderBy(desc(schema.ledgerEntries.createdAt))
+        .limit(query.limit)
+        .offset(offset);
 
-      return { entries, total, page, limit };
+      return { entries, total, page: query.page, limit: query.limit };
     });
   });
 
@@ -32,12 +46,21 @@ const ledgerRoutes: FastifyPluginAsync = async (fastify) => {
     const { orderId } = request.params as { orderId: string };
 
     return withTenantSql(tenantId, async (tx) => {
-      const entries = await tx`
-        SELECT id, tenant_id, order_id, entry_type, amount_cents, currency, description, metadata, created_at
-        FROM ledger_entries
-        WHERE order_id = ${orderId}
-        ORDER BY created_at DESC
-      `;
+      const entries = await tx
+        .select({
+          id: schema.ledgerEntries.id,
+          tenantId: schema.ledgerEntries.tenantId,
+          orderId: schema.ledgerEntries.orderId,
+          entryType: schema.ledgerEntries.entryType,
+          amountCents: schema.ledgerEntries.amountCents,
+          currency: schema.ledgerEntries.currency,
+          description: schema.ledgerEntries.description,
+          metadata: schema.ledgerEntries.metadata,
+          createdAt: schema.ledgerEntries.createdAt,
+        })
+        .from(schema.ledgerEntries)
+        .where(eq(schema.ledgerEntries.orderId, orderId))
+        .orderBy(desc(schema.ledgerEntries.createdAt));
 
       if (entries.length === 0) {
         reply.code(404);
@@ -52,15 +75,21 @@ const ledgerRoutes: FastifyPluginAsync = async (fastify) => {
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      const [summary] = await tx`
-        SELECT
+      const rows = await tx.execute(
+        sql`SELECT
           COUNT(*) FILTER (WHERE entry_type = 'credit')::int as credit_count,
           COALESCE(SUM(CASE WHEN entry_type = 'credit' THEN amount_cents ELSE 0 END), 0) as credit_total,
           COUNT(*) FILTER (WHERE entry_type = 'debit')::int as debit_count,
           COALESCE(SUM(CASE WHEN entry_type = 'debit' THEN amount_cents ELSE 0 END), 0) as debit_total
-        FROM ledger_entries
-      `;
+        FROM ledger_entries`,
+      ) as Array<{
+        credit_count: number;
+        credit_total: bigint;
+        debit_count: number;
+        debit_total: bigint;
+      }>;
 
+      const summary = rows[0];
       const creditTotal = BigInt(summary.credit_total);
       const debitTotal = BigInt(summary.debit_total);
 

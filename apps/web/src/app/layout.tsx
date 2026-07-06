@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { TenantProvider } from "@/lib/tenant-context";
+import { AuthProvider } from "@/lib/auth-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-slate-50 text-slate-900 antialiased">
-        <TenantProvider>{children}</TenantProvider>
+        <AuthProvider>
+          <TenantProvider>{children}</TenantProvider>
+        </AuthProvider>
       </body>
     </html>
   );

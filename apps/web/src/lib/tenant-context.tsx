@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
+import { useAuth } from "./auth-context";
 
 export interface Tenant {
   id: string;
@@ -27,7 +28,14 @@ const TenantContext = createContext<TenantContextValue>({
 });
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [tenantId, setTenantId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.tenant_id) {
+      setTenantId(user.tenant_id);
+    }
+  }, [user]);
 
   return (
     <TenantContext.Provider value={{ tenantId, setTenantId, tenants: TENANTS }}>

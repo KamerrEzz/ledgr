@@ -1,5 +1,6 @@
 import { createSubscriber } from "@ledgr/event-bus";
-import { sql } from "@ledgr/db";
+import { db, schema } from "@ledgr/db";
+import { eq, sql } from "drizzle-orm";
 import { canTransition } from "../services/order-state-machine.js";
 import { createSplitPaymentEntries } from "../services/ledger.js";
 
@@ -25,10 +26,15 @@ export function startPaymentConsumer(): void {
         return;
       }
 
-      await sql.begin(async (tx) => {
-        await tx`SELECT set_config('app.current_tenant_id', ${tenant_id}, true)`;
+      await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT set_config('app.current_tenant_id', ${tenant_id}, true)`,
+        );
 
-        const [order] = await tx`SELECT * FROM orders WHERE id = ${order_id}`;
+        const [order] = await tx
+          .select()
+          .from(schema.orders)
+          .where(eq(schema.orders.id, order_id));
         if (!order) {
           console.error(`Order ${order_id} not found`);
           return;
@@ -41,12 +47,20 @@ export function startPaymentConsumer(): void {
           return;
         }
 
-        await tx`UPDATE orders SET status = 'paid', updated_at = now() WHERE id = ${order_id}`;
+        await tx
+          .update(schema.orders)
+          .set({ status: "paid", updatedAt: new Date() })
+          .where(eq(schema.orders.id, order_id));
 
-        await tx`INSERT INTO order_status_transitions (order_id, tenant_id, from_status, to_status, reason)
-          VALUES (${order_id}, ${tenant_id}, ${order.status}, 'paid', 'Payment confirmed via event')`;
+        await tx.insert(schema.orderStatusTransitions).values({
+          orderId: order_id,
+          tenantId: tenant_id,
+          fromStatus: order.status,
+          toStatus: "paid",
+          reason: "Payment confirmed via event",
+        });
 
-        const totalCents = BigInt(order.total_cents);
+        const totalCents = order.totalCents;
         await createSplitPaymentEntries(
           tx,
           order_id,

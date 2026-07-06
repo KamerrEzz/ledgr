@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTenant } from "@/lib/tenant-context";
 import { apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import StatusBadge from "@/components/StatusBadge";
@@ -18,22 +17,19 @@ interface WebhookEvent {
 }
 
 export default function WebhooksPage() {
-  const { tenantId } = useTenant();
   const [events, setEvents] = useState<WebhookEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<WebhookEvent | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!tenantId) return;
-    apiFetch<WebhookEvent[]>("/api/webhooks", {}, tenantId)
+    apiFetch<WebhookEvent[]>("/api/webhooks")
       .then(setEvents)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [tenantId]);
+  }, []);
 
   const handleViewEvent = async (event: WebhookEvent) => {
-    if (!tenantId) return;
-    const detailed = await apiFetch<WebhookEvent>(`/api/webhooks/${event.id}`, {}, tenantId);
+    const detailed = await apiFetch<WebhookEvent>(`/api/webhooks/${event.id}`);
     setSelectedEvent(detailed);
   };
 

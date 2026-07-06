@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTenant } from "@/lib/tenant-context";
 import { apiFetch } from "@/lib/api";
 import { formatCents, formatDate } from "@/lib/format";
 import DataTable from "@/components/DataTable";
@@ -43,7 +42,6 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 };
 
 export default function OrdersPage() {
-  const { tenantId } = useTenant();
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -55,19 +53,17 @@ export default function OrdersPage() {
   const [transitionTo, setTransitionTo] = useState("");
 
   const loadOrders = () => {
-    if (!tenantId) return;
-    apiFetch<Order[]>("/api/orders", {}, tenantId)
+    apiFetch<Order[]>("/api/orders")
       .then(setOrders)
       .catch(console.error)
       .finally(() => setLoading(false));
   };
 
   const loadVariants = () => {
-    if (!tenantId) return;
-    apiFetch<Variant[]>("/api/resources", {}, tenantId).then((resources) => {
+    apiFetch<Variant[]>("/api/resources").then((resources) => {
       const allVariants: Variant[] = [];
       const promises = resources.map((r: { id: string }) =>
-        apiFetch<Variant[]>(`/api/resources/${r.id}/variants`, {}, tenantId).then((v) => {
+        apiFetch<Variant[]>(`/api/resources/${r.id}/variants`).then((v) => {
           allVariants.push(...v);
         })
       );
@@ -78,38 +74,37 @@ export default function OrdersPage() {
   useEffect(() => {
     loadOrders();
     loadVariants();
-  }, [tenantId]);
+  }, []);
 
   const handleCreateOrder = async () => {
-    if (!tenantId || !createForm.variant_id) return;
+    if (!createForm.variant_id) return;
     await apiFetch<Order>("/api/orders", {
       method: "POST",
       body: JSON.stringify({
         resource_variant_id: createForm.variant_id,
         quantity: parseInt(createForm.quantity, 10),
       }),
-    }, tenantId);
+    });
     setShowCreateModal(false);
     setCreateForm({ variant_id: "", quantity: "1" });
     loadOrders();
   };
 
   const handleTransition = async () => {
-    if (!tenantId || !selectedOrder || !transitionTo) return;
+    if (!selectedOrder || !transitionTo) return;
     await apiFetch<Order>(`/api/orders/${selectedOrder.id}/transition`, {
       method: "POST",
       body: JSON.stringify({ to_status: transitionTo }),
-    }, tenantId);
+    });
     setShowTransitionModal(false);
     setTransitionTo("");
-    const updated = await apiFetch<Order>(`/api/orders/${selectedOrder.id}`, {}, tenantId);
+    const updated = await apiFetch<Order>(`/api/orders/${selectedOrder.id}`);
     setSelectedOrder(updated);
     loadOrders();
   };
 
   const handleViewOrder = async (order: Order) => {
-    if (!tenantId) return;
-    const detailed = await apiFetch<Order>(`/api/orders/${order.id}`, {}, tenantId);
+    const detailed = await apiFetch<Order>(`/api/orders/${order.id}`);
     setSelectedOrder(detailed);
   };
 

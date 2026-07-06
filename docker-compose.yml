@@ -27,5 +27,56 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: ledgr-backend
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgres://app:ledgr_app@postgres:5432/ledgr
+      JWT_SECRET: ledgr-dev-secret-change-in-production
+      PORT: 3001
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: ledgr-web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  payment-gateway-mock:
+    build:
+      context: .
+      dockerfile: apps/payment-gateway-mock/Dockerfile
+    container_name: ledgr-payment-mock
+    ports:
+      - "3002:3002"
+    environment:
+      PORT: 3002
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 volumes:
   postgres_data:

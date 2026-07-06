@@ -1,11 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
+import { db, schema } from "@ledgr/db";
+import { eq } from "drizzle-orm";
 import { withTenantSql } from "../lib/tenant-sql.js";
+import { validate } from "../lib/validate.js";
+import { createResourceSchema, updateResourceSchema } from "../schemas/index.js";
 
 const resourcesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/", async (request) => {
     const tenantId = (request as any).tenantId as string;
     return withTenantSql(tenantId, async (tx) => {
-      return tx`SELECT * FROM resources`;
+      return tx.select().from(schema.resources);
     });
   });
 
@@ -14,7 +18,10 @@ const resourcesRoutes: FastifyPluginAsync = async (fastify) => {
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      const [resource] = await tx`SELECT * FROM resources WHERE id = ${id}`;
+      const [resource] = await tx
+        .select()
+        .from(schema.resources)
+        .where(eq(schema.resources.id, id));
       if (!resource) {
         reply.code(404);
         return { error: "Resource not found" };
@@ -24,16 +31,15 @@ const resourcesRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.post("/", async (request, reply) => {
-    const { name, description } = request.body as {
-      name: string;
-      description?: string;
-    };
+    const body = validate(createResourceSchema, request.body, reply);
+    if (!body) return;
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      const [resource] = await tx`INSERT INTO resources (tenant_id, name, description)
-        VALUES (${tenantId}, ${name}, ${description ?? null})
-        RETURNING *`;
+      const [resource] = await tx
+        .insert(schema.resources)
+        .values({ tenantId, name: body.name, description: body.description ?? null })
+        .returning();
       reply.code(201);
       return resource;
     });
@@ -41,26 +47,28 @@ const resourcesRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch("/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const { name, description } = request.body as {
-      name?: string;
-      description?: string;
-    };
+    const body = validate(updateResourceSchema, request.body, reply);
+    if (!body) return;
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      const [resource] = await tx`SELECT * FROM resources WHERE id = ${id}`;
-      if (!resource) {
+      const [existing] = await tx
+        .select()
+        .from(schema.resources)
+        .where(eq(schema.resources.id, id));
+      if (!existing) {
         reply.code(404);
         return { error: "Resource not found" };
       }
 
-      const updatedName = name ?? resource.name;
-      const updatedDescription = description ?? resource.description;
-
-      const [updated] = await tx`UPDATE resources
-        SET name = ${updatedName}, description = ${updatedDescription}
-        WHERE id = ${id}
-        RETURNING *`;
+      const [updated] = await tx
+        .update(schema.resources)
+        .set({
+          name: body.name ?? existing.name,
+          description: body.description ?? existing.description,
+        })
+        .where(eq(schema.resources.id, id))
+        .returning();
       return updated;
     });
   });
@@ -70,13 +78,20 @@ const resourcesRoutes: FastifyPluginAsync = async (fastify) => {
     const tenantId = (request as any).tenantId as string;
 
     return withTenantSql(tenantId, async (tx) => {
-      const [resource] = await tx`SELECT * FROM resources WHERE id = ${id}`;
-      if (!resource) {
+      const [existing] = await tx
+        .select()
+        .from(schema.resources)
+        .where(eq(schema.resources.id, id));
+      if (!existing) {
         reply.code(404);
         return { error: "Resource not found" };
       }
 
-      const [updated] = await tx`UPDATE resources SET is_active = false WHERE id = ${id} RETURNING *`;
+      const [updated] = await tx
+        .update(schema.resources)
+        .set({ isActive: false })
+        .where(eq(schema.resources.id, id))
+        .returning();
       return updated;
     });
   });

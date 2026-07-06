@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTenant } from "@/lib/tenant-context";
 import { apiFetch } from "@/lib/api";
 import { formatCents, formatDate } from "@/lib/format";
 
@@ -29,7 +28,6 @@ interface LedgerSummary {
 }
 
 export default function LedgerPage() {
-  const { tenantId } = useTenant();
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [summary, setSummary] = useState<LedgerSummary | null>(null);
   const [page, setPage] = useState(1);
@@ -38,11 +36,10 @@ export default function LedgerPage() {
   const limit = 20;
 
   useEffect(() => {
-    if (!tenantId) return;
     setLoading(true);
     Promise.all([
-      apiFetch<LedgerResponse>(`/api/ledger?page=${page}&limit=${limit}`, {}, tenantId),
-      apiFetch<LedgerSummary>("/api/ledger/summary", {}, tenantId),
+      apiFetch<LedgerResponse>(`/api/ledger?page=${page}&limit=${limit}`),
+      apiFetch<LedgerSummary>("/api/ledger/summary"),
     ])
       .then(([res, sum]) => {
         setEntries(res.entries);
@@ -51,7 +48,7 @@ export default function LedgerPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [tenantId, page]);
+  }, [page]);
 
   if (loading) return <div className="text-slate-500">Loading...</div>;
 

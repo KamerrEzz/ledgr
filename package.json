@@ -4,10 +4,20 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "lint": "turbo lint"
+    "lint": "turbo lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "migrate": "cd packages/db && pnpm migrate",
+    "seed": "cd packages/db && pnpm seed"
   },
   "devDependencies": {
-    "turbo": "^2.3.3"
+    "@vitest/coverage-v8": "^4.1.9",
+    "turbo": "^2.3.3",
+    "vitest": "^4.1.9"
   },
   "packageManager": "pnpm@9.15.4",
   "engines": {
