@@ -14,6 +14,17 @@ import { startPaymentConsumer } from "./consumers/payment-confirmations.js";
 
 const server = Fastify({ logger: true });
 
+server.addHook("preSerialization", (_request, _reply, payload, done) => {
+  if (payload && typeof payload === "object") {
+    const str = JSON.stringify(payload, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value,
+    );
+    done(null, JSON.parse(str));
+  } else {
+    done(null, payload);
+  }
+});
+
 server.setErrorHandler((err, _request, reply) => {
   if (err instanceof ZodError) {
     reply.code(400).send({
