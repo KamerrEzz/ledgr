@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-06
+
+### Security
+
+- Hardened RLS policies: explicit `WITH CHECK` clauses on all tenant tables
+- Ledger entries append-only enforced at DB level (no UPDATE/DELETE policies = denied by default)
+- Order status transitions append-only (immutable audit trail enforced at DB level)
+- Orders no longer deletable at DB level (UPDATE only with WITH CHECK)
+- webhook_events policies scoped to SELECT + INSERT + UPDATE with explicit WITH CHECK
+
 ## [0.2.0] - 2026-07-06
 
 ### Added
@@ -88,6 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Race condition: SELECT FOR UPDATE on order rows during payment processing
 - Webhook event original status no longer overwritten on duplicate detection
 
-[Unreleased]: https://github.com/KamerrEzz/ledgr/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/KamerrEzz/ledgr/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/KamerrEzz/ledgr/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/KamerrEzz/ledgr/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/KamerrEzz/ledgr/releases/tag/v0.1.0
