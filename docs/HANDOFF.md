@@ -10,7 +10,7 @@
 
 ```bash
 # 1. Clone and install
-git clone <repo-url>
+git clone https://github.com/KamerrEzz/ledgr.git
 cd ledgr
 pnpm install
 
@@ -30,6 +30,8 @@ cd ../..
 pnpm dev
 ```
 
+> **Note:** The backend now uses a non-superuser `app` role for database connections (RLS enforcement). Migrations and seeds run as the `ledgr` superuser. See [Database Roles](#database-roles) for details.
+
 ## Verify It Works
 
 ```bash
@@ -45,40 +47,102 @@ curl http://localhost:3002/health
 
 All three should return `{ "status": "ok" }`.
 
+## Authentication
+
+Ledgr uses stateless JWT authentication with dual tokens:
+
+- **Access token** (15min): stored in React memory, sent via `Authorization: Bearer` header
+- **Refresh token** (7 days): stored in httpOnly cookie (`SameSite=Strict`, `Path=/api/auth`)
+
+### Test Users
+
+| Email | Password | Role | Tenant |
+|-------|----------|------|--------|
+| `admin@acme.com` | `password123` | admin | Acme Corp |
+| `admin@globex.com` | `password123` | admin | Globex Inc |
+| `admin@initech.com` | `password123` | admin | Initech |
+
+### Login
+
+```bash
+# Get access token
+curl -s -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@acme.com", "password": "password123"}' | jq
+```
+
+Save the `access_token` from the response. Use it in all subsequent requests:
+
+```bash
+TOKEN="<access_token>"
+
+# Access protected resources
+curl -s http://localhost:3001/api/resources \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+
+### Refresh Token
+
+The refresh token is automatically sent as an httpOnly cookie. To get a new access token:
+
+```bash
+curl -s -X POST http://localhost:3001/api/auth/refresh \
+  -b "refresh_token=<token>" | jq
+```
+
+### Logout
+
+```bash
+curl -s -X POST http://localhost:3001/api/auth/logout \
+  -b "refresh_token=<token>" | jq
+```
+
 ## Test Multi-Tenant Isolation
 
 This test proves that RLS prevents Tenant B from seeing Tenant A's data.
 
-**Step 1: Create a resource as Tenant A (Acme)**
+**Step 1: Login as Acme admin**
+
+```bash
+ACME_TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@acme.com", "password": "password123"}' | jq -r '.access_token')
+```
+
+**Step 2: Create a resource as Tenant A (Acme)**
 
 ```bash
 curl -s -X POST http://localhost:3001/api/resources \
   -H "Content-Type: application/json" \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" \
+  -H "Authorization: Bearer $ACME_TOKEN" \
   -d '{"name": "Test Product", "description": "Created by Acme"}' | jq
 ```
 
-Save the `id` from the response — you will need it in the next steps.
+Save the `id` from the response.
 
-**Step 2: Try to read it as Tenant B (Globex)**
+**Step 3: Login as Globex admin and try to read Acme's resource**
 
 ```bash
+GLOBEX_TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@globex.com", "password": "password123"}' | jq -r '.access_token')
+
 curl -s http://localhost:3001/api/resources/<resource-id> \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000002" | jq
+  -H "Authorization: Bearer $GLOBEX_TOKEN" | jq
 ```
 
 Expected response: `404` — `"Resource not found"`. The resource exists, but RLS hides it from Globex.
 
-**Step 3: Read it as Tenant A (Acme)**
+**Step 4: Read it as Tenant A (Acme)**
 
 ```bash
 curl -s http://localhost:3001/api/resources/<resource-id> \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" | jq
+  -H "Authorization: Bearer $ACME_TOKEN" | jq
 ```
 
 Expected response: the full resource object with `name: "Test Product"`.
 
-**Why this works:** PostgreSQL RLS filters rows based on `app.current_tenant_id`. The query `SELECT * FROM resources WHERE id = <id>` returns a row for Acme but returns nothing for Globex because Globex's `tenant_id` does not match Acme's UUID. The database enforces this — not the application.
+**Why this works:** PostgreSQL RLS filters rows based on `app.current_tenant_id`. The JWT token contains the `tenant_id`, which is set via `SET LOCAL` in the database transaction. The query `SELECT * FROM resources WHERE id = <id>` returns a row for Acme but returns nothing for Globex because Globex's `tenant_id` does not match Acme's UUID. The database enforces this — not the application.
 
 ## Test Order State Machine
 
@@ -87,7 +151,7 @@ Expected response: the full resource object with `name: "Test Product"`.
 ```bash
 curl -s -X POST http://localhost:3001/api/orders \
   -H "Content-Type: application/json" \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" \
+  -H "Authorization: Bearer $ACME_TOKEN" \
   -d '{"resource_variant_id": "c0000000-0000-0000-0000-000000000001", "quantity": 2}' | jq
 ```
 
@@ -98,7 +162,7 @@ The response shows `"status": "draft"`. Save the `id`.
 ```bash
 curl -s -X POST http://localhost:3001/api/orders/<order-id>/transition \
   -H "Content-Type: application/json" \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" \
+  -H "Authorization: Bearer $ACME_TOKEN" \
   -d '{"to_status": "fulfilled"}' | jq
 ```
 
@@ -110,13 +174,13 @@ Expected: `400` — `"Invalid transition from 'draft' to 'fulfilled'"`. The stat
 # draft → pending_payment
 curl -s -X POST http://localhost:3001/api/orders/<order-id>/transition \
   -H "Content-Type: application/json" \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" \
+  -H "Authorization: Bearer $ACME_TOKEN" \
   -d '{"to_status": "pending_payment", "reason": "Customer submitted order"}' | jq
 
 # pending_payment → paid
 curl -s -X POST http://localhost:3001/api/orders/<order-id>/transition \
   -H "Content-Type: application/json" \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" \
+  -H "Authorization: Bearer $ACME_TOKEN" \
   -d '{"to_status": "paid", "reason": "Payment confirmed"}' | jq
 ```
 
@@ -126,7 +190,7 @@ Both return `200` with the updated order.
 
 ```bash
 curl -s http://localhost:3001/api/ledger/entries/<order-id> \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" | jq
+  -H "Authorization: Bearer $ACME_TOKEN" | jq
 ```
 
 Expected: 2 entries — one `credit` (tenant payout, 90%) and one `debit` (platform commission, 10%).
@@ -177,7 +241,7 @@ Expected: `{ "status": "duplicate" }`.
 
 ```bash
 curl -s http://localhost:3001/api/ledger/integrity \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" | jq
+  -H "Authorization: Bearer $ACME_TOKEN" | jq
 ```
 
 Expected:
@@ -209,7 +273,7 @@ Expected:
 ```bash
 # Current balance
 curl -s http://localhost:3001/api/balance \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" | jq
+  -H "Authorization: Bearer $ACME_TOKEN" | jq
 ```
 
 Expected:
@@ -228,41 +292,50 @@ The `net_balance` equals `total_credits - total_debits`. There is no cached bala
 ```bash
 # Balance history (last 30 days)
 curl -s http://localhost:3001/api/balance/history \
-  -H "x-tenant-id: a0000000-0000-0000-0000-000000000001" | jq
+  -H "Authorization: Bearer $ACME_TOKEN" | jq
 ```
 
 Returns daily credit/debit breakdown for the last 30 days.
 
 ## API Reference
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Backend health check |
-| `GET` | `/api/resources` | List all resources for tenant |
-| `GET` | `/api/resources/:id` | Get a single resource |
-| `POST` | `/api/resources` | Create a resource |
-| `PATCH` | `/api/resources/:id` | Update a resource |
-| `DELETE` | `/api/resources/:id` | Soft-delete a resource (sets `is_active = false`) |
-| `GET` | `/api/resources/:resourceId/variants` | List variants for a resource |
-| `GET` | `/api/resources/:resourceId/variants/:id` | Get a single variant |
-| `POST` | `/api/resources/:resourceId/variants` | Create a variant |
-| `PATCH` | `/api/resources/:resourceId/variants/:id` | Update a variant |
-| `DELETE` | `/api/resources/:resourceId/variants/:id` | Delete a variant |
-| `GET` | `/api/orders` | List all orders for tenant |
-| `GET` | `/api/orders/:id` | Get an order with its transition history |
-| `POST` | `/api/orders` | Create an order (starts as `draft`) |
-| `POST` | `/api/orders/:id/transition` | Transition an order to a new status |
-| `GET` | `/api/ledger` | List ledger entries (paginated) |
-| `GET` | `/api/ledger/entries/:orderId` | Get ledger entries for a specific order |
-| `GET` | `/api/ledger/summary` | Get credit/debit totals |
-| `GET` | `/api/ledger/integrity` | Run integrity validation |
-| `GET` | `/api/balance` | Get current balance (credits, debits, net) |
-| `GET` | `/api/balance/history` | Get daily balance breakdown (last 30 days) |
-| `GET` | `/api/webhooks` | List recent webhook events |
-| `GET` | `/api/webhooks/:id` | Get a specific webhook event |
-| `POST` | `/api/webhooks/receive` | Receive a webhook from a payment gateway |
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/health` | Backend health check | No |
+| `POST` | `/api/auth/register` | Register a new user | Admin |
+| `POST` | `/api/auth/login` | Login and get access token | No |
+| `POST` | `/api/auth/refresh` | Refresh access token | Cookie |
+| `POST` | `/api/auth/logout` | Logout and clear refresh token | No |
+| `GET` | `/api/auth/me` | Get current user from JWT | Yes |
+| `GET` | `/api/resources` | List all resources for tenant | Yes |
+| `GET` | `/api/resources/:id` | Get a single resource | Yes |
+| `POST` | `/api/resources` | Create a resource | Yes |
+| `PATCH` | `/api/resources/:id` | Update a resource | Yes |
+| `DELETE` | `/api/resources/:id` | Soft-delete a resource (sets `is_active = false`) | Yes |
+| `GET` | `/api/resources/:resourceId/variants` | List variants for a resource | Yes |
+| `GET` | `/api/resources/:resourceId/variants/:id` | Get a single variant | Yes |
+| `POST` | `/api/resources/:resourceId/variants` | Create a variant | Yes |
+| `PATCH` | `/api/resources/:resourceId/variants/:id` | Update a variant | Yes |
+| `DELETE` | `/api/resources/:resourceId/variants/:id` | Delete a variant | Yes |
+| `GET` | `/api/orders` | List all orders for tenant | Yes |
+| `GET` | `/api/orders/:id` | Get an order with its transition history | Yes |
+| `POST` | `/api/orders` | Create an order (starts as `draft`) | Yes |
+| `POST` | `/api/orders/:id/transition` | Transition an order to a new status | Yes |
+| `GET` | `/api/ledger` | List ledger entries (paginated) | Yes |
+| `GET` | `/api/ledger/entries/:orderId` | Get ledger entries for a specific order | Yes |
+| `GET` | `/api/ledger/summary` | Get credit/debit totals | Yes |
+| `GET` | `/api/ledger/integrity` | Run integrity validation | Yes |
+| `GET` | `/api/balance` | Get current balance (credits, debits, net) | Yes |
+| `GET` | `/api/balance/history` | Get daily balance breakdown (last 30 days) | Yes |
+| `GET` | `/api/webhooks` | List recent webhook events | Yes |
+| `GET` | `/api/webhooks/:id` | Get a specific webhook event | Yes |
+| `POST` | `/api/webhooks/receive` | Receive a webhook from a payment gateway | No |
 
-All endpoints except `/health` and `POST /api/webhooks/receive` require the `x-tenant-id` header.
+**Auth column:**
+- **No**: No authentication required
+- **Yes**: Requires `Authorization: Bearer <token>` header (JWT)
+- **Admin**: Requires admin role (via JWT)
+- **Cookie**: Uses httpOnly refresh token cookie
 
 ## Architecture Diagram
 
@@ -312,3 +385,109 @@ After running `pnpm seed`, the database contains:
 | Order | Acme Pro Plan (paid) | `d0000000-0000-0000-0000-000000000001` |
 | Order | Acme Basic Plan (draft) | `d0000000-0000-0000-0000-000000000002` |
 | Order | Globex Consulting (pending_payment) | `d0000000-0000-0000-0000-000000000003` |
+
+## Database Roles
+
+Ledgr uses two PostgreSQL roles for security:
+
+| Role | Purpose | Used By |
+|------|---------|---------|
+| `ledgr` | Superuser — runs migrations and seeds | `pnpm migrate`, `pnpm seed` |
+| `app` | Non-superuser — application queries with RLS enforced | Backend API |
+
+**Why two roles?** PostgreSQL superusers bypass Row-Level Security even when `FORCE ROW LEVEL SECURITY` is set. The `ledgr` role needs superuser privileges for migrations (creating tables, enabling RLS). The `app` role connects as a normal user, so RLS policies actually filter rows.
+
+**Connection strings:**
+- Application: `postgres://app:ledgr_app@localhost:5432/ledgr` (set in `DATABASE_URL`)
+- Admin: `postgres://ledgr:ledgr_dev@localhost:5432/ledgr` (used by migrate/seed scripts)
+
+## Event Bus (Redis Pub/Sub)
+
+The `@ledgr/event-bus` package provides a thin wrapper around Redis for event-driven communication between services.
+
+### Architecture
+
+```
+Payment Mock (:3002)  ──webhook──▶ Backend (:3001)
+                        │
+                        ├──pub/sub──▶ Redis (:6379)
+                                        │
+                        Backend (:3001) ◀┘
+```
+
+### How It Works
+
+1. **Payment Mock** sends webhooks directly to the Backend's `POST /api/webhooks/receive` endpoint
+2. The Backend processes the webhook and publishes a `payment:confirmed` event to Redis
+3. The Backend's Redis consumer listens for `payment:confirmed` events and processes them (transitions order to paid, creates ledger entries)
+
+### Package API
+
+```typescript
+import { createPublisher, createSubscriber, redis } from "@ledgr/event-bus";
+
+// Create a publisher (for sending events)
+const publisher = createPublisher();
+await publisher.publish("payment:confirmed", JSON.stringify({ order_id, tenant_id }));
+
+// Create a subscriber (for receiving events)
+const subscriber = createSubscriber();
+await subscriber.subscribe("payment:confirmed");
+subscriber.on("message", (channel, message) => {
+  console.log(`Received on ${channel}:`, JSON.parse(message));
+});
+
+// Direct Redis access (for advanced use cases)
+await redis.set("key", "value");
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_HOST` | `localhost` | Redis server hostname |
+| `REDIS_PORT` | `6379` | Redis server port |
+
+### Event Channels
+
+| Channel | Publisher | Consumer | Payload |
+|---------|-----------|----------|---------|
+| `payment:confirmed` | Backend (webhook handler) | Backend (payment consumer) | `{ order_id, tenant_id, status }` |
+
+## Running Tests
+
+### Unit Tests (Vitest)
+
+```bash
+# Run all unit tests
+pnpm test
+
+# Run with coverage
+pnpm test:coverage
+
+# Run in watch mode
+pnpm test:watch
+```
+
+### E2E Tests (Playwright)
+
+```bash
+cd apps/web
+
+# Run all E2E tests
+npx playwright test
+
+# Run in headed mode (visible browser)
+npx playwright test --headed
+
+# Run specific test
+npx playwright test -g "login"
+```
+
+### Test Users for E2E
+
+| Email | Password | Role | Tenant |
+|-------|----------|------|--------|
+| `admin@acme.com` | `password123` | admin | Acme Corp |
+| `admin@globex.com` | `password123` | admin | Globex Inc |
+| `admin@initech.com` | `password123` | admin | Initech |
