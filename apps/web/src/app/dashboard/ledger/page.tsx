@@ -6,12 +6,12 @@ import { formatCents, formatDate } from "@/lib/format";
 
 interface LedgerEntry {
   id: string;
-  order_id: string;
-  entry_type: string;
-  amount_cents: string;
+  orderId: string;
+  entryType: string;
+  amountCents: string;
   currency: string;
   description: string | null;
-  created_at: string;
+  createdAt: string;
 }
 
 interface LedgerResponse {
@@ -22,8 +22,8 @@ interface LedgerResponse {
 }
 
 interface LedgerSummary {
-  credits: { count: number; total_cents: string };
-  debits: { count: number; total_cents: string };
+  credits: { count: number; totalCents: string };
+  debits: { count: number; totalCents: string };
   net: string;
 }
 
@@ -61,11 +61,11 @@ export default function LedgerPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white rounded-lg border border-slate-200 p-6">
             <p className="text-sm text-slate-500">Total Credits ({summary.credits.count})</p>
-            <p className="text-2xl font-bold text-green-600 mt-1">{formatCents(summary.credits.total_cents)}</p>
+            <p className="text-2xl font-bold text-green-600 mt-1">{formatCents(summary.credits.totalCents)}</p>
           </div>
           <div className="bg-white rounded-lg border border-slate-200 p-6">
             <p className="text-sm text-slate-500">Total Debits ({summary.debits.count})</p>
-            <p className="text-2xl font-bold text-red-600 mt-1">{formatCents(summary.debits.total_cents)}</p>
+            <p className="text-2xl font-bold text-red-600 mt-1">{formatCents(summary.debits.totalCents)}</p>
           </div>
           <div className="bg-white rounded-lg border border-slate-200 p-6">
             <p className="text-sm text-slate-500">Net</p>
@@ -88,14 +88,14 @@ export default function LedgerPage() {
             <tbody className="bg-white divide-y divide-slate-200">
               {entries.map((entry) => (
                 <tr key={entry.id}>
-                  <td className="px-4 py-3 text-sm text-slate-900">{formatDate(entry.created_at)}</td>
-                  <td className="px-4 py-3 text-sm text-slate-900 font-mono">{entry.order_id.slice(0, 8)}...</td>
+                  <td className="px-4 py-3 text-sm text-slate-900">{formatDate(entry.createdAt)}</td>
+                  <td className="px-4 py-3 text-sm text-slate-900 font-mono">{entry.orderId.slice(0, 8)}...</td>
                   <td className="px-4 py-3 text-sm">
-                    <span className={`font-medium ${entry.entry_type === "credit" ? "text-green-600" : "text-red-600"}`}>
-                      {entry.entry_type}
+                    <span className={`font-medium ${entry.entryType === "credit" ? "text-green-600" : "text-red-600"}`}>
+                      {entry.entryType}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm font-medium text-slate-900">{formatCents(entry.amount_cents)}</td>
+                  <td className="px-4 py-3 text-sm font-medium text-slate-900">{formatCents(entry.amountCents)}</td>
                   <td className="px-4 py-3 text-sm text-slate-600">{entry.description || "-"}</td>
                 </tr>
               ))}

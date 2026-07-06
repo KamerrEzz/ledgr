@@ -10,15 +10,15 @@ interface Resource {
   id: string;
   name: string;
   description: string | null;
-  is_active: boolean;
-  created_at: string;
+  isActive: boolean;
+  createdAt: string;
 }
 
 interface Variant {
   id: string;
-  resource_id: string;
+  resourceId: string;
   name: string;
-  price_cents: string;
+  priceCents: string;
   currency: string;
   metadata: Record<string, unknown>;
 }
@@ -128,9 +128,9 @@ export default function ResourcesPage() {
   const resourceColumns = [
     { key: "name", header: "Name" },
     { key: "description", header: "Description", render: (item: Resource) => item.description || "-" },
-    { key: "is_active", header: "Active", render: (item: Resource) => (
-      <span className={item.is_active ? "text-green-600" : "text-red-600"}>
-        {item.is_active ? "Yes" : "No"}
+    { key: "isActive", header: "Active", render: (item: Resource) => (
+      <span className={item.isActive ? "text-green-600" : "text-red-600"}>
+        {item.isActive ? "Yes" : "No"}
       </span>
     )},
     { key: "actions", header: "Actions", render: (item: Resource) => (
@@ -153,12 +153,12 @@ export default function ResourcesPage() {
 
   const variantColumns = [
     { key: "name", header: "Name" },
-    { key: "price_cents", header: "Price", render: (item: Variant) => formatCents(item.price_cents) },
+    { key: "priceCents", header: "Price", render: (item: Variant) => formatCents(item.priceCents) },
     { key: "currency", header: "Currency" },
     { key: "actions", header: "Actions", render: (item: Variant) => (
       <div className="flex gap-2">
         <button
-          onClick={(e) => { e.stopPropagation(); setEditVariant(item); setVariantForm({ name: item.name, price_cents: String(Number(item.price_cents) / 100), currency: item.currency }); }}
+          onClick={(e) => { e.stopPropagation(); setEditVariant(item); setVariantForm({ name: item.name, price_cents: String(Number(item.priceCents) / 100), currency: item.currency }); }}
           className="text-sm text-blue-600 hover:underline"
         >
           Edit

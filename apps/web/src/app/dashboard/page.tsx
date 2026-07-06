@@ -8,22 +8,22 @@ interface Resource {
   id: string;
   name: string;
   description: string | null;
-  is_active: boolean;
+  isActive: boolean;
 }
 
 interface Order {
   id: string;
   status: string;
-  total_cents: string;
+  totalCents: string;
   quantity: number;
-  created_at: string;
-  resource_variant_id: string;
+  createdAt: string;
+  resourceVariantId: string;
 }
 
 interface Balance {
-  total_credits: string;
-  total_debits: string;
-  net_balance: string;
+  totalCredits: string;
+  totalDebits: string;
+  netBalance: string;
   currency: string;
 }
 
@@ -87,7 +87,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-lg border border-slate-200 p-6">
           <p className="text-sm text-slate-500">Current Balance</p>
           <p className="text-3xl font-bold text-slate-900 mt-1">
-            {balance ? formatCents(balance.net_balance) : "$0.00"}
+            {balance ? formatCents(balance.netBalance) : "$0.00"}
           </p>
         </div>
       </div>
@@ -104,10 +104,10 @@ export default function DashboardPage() {
                     <p className="text-sm font-medium text-slate-900">
                       {order.id.slice(0, 8)}...
                     </p>
-                    <p className="text-xs text-slate-500">{formatDate(order.created_at)}</p>
+                    <p className="text-xs text-slate-500">{formatDate(order.createdAt)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-slate-900">{formatCents(order.total_cents)}</p>
+                    <p className="text-sm font-medium text-slate-900">{formatCents(order.totalCents)}</p>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor(order.status)}`}>
                       {order.status.replace(/_/g, " ")}
                     </span>

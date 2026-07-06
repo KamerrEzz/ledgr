@@ -8,12 +8,12 @@ import StatusBadge from "@/components/StatusBadge";
 interface WebhookEvent {
   id: string;
   source: string;
-  event_type: string;
+  eventType: string;
   status: string;
   payload: unknown;
-  created_at: string;
-  processed_at: string | null;
-  error_message: string | null;
+  createdAt: string;
+  processedAt: string | null;
+  errorMessage: string | null;
 }
 
 export default function WebhooksPage() {
@@ -57,9 +57,9 @@ export default function WebhooksPage() {
                   onClick={() => handleViewEvent(event)}
                   className="cursor-pointer hover:bg-slate-50"
                 >
-                  <td className="px-4 py-3 text-sm text-slate-900">{formatDate(event.created_at)}</td>
+                  <td className="px-4 py-3 text-sm text-slate-900">{formatDate(event.createdAt)}</td>
                   <td className="px-4 py-3 text-sm text-slate-900">{event.source}</td>
-                  <td className="px-4 py-3 text-sm text-slate-900">{event.event_type}</td>
+                  <td className="px-4 py-3 text-sm text-slate-900">{event.eventType}</td>
                   <td className="px-4 py-3 text-sm"><StatusBadge status={event.status} /></td>
                   <td className="px-4 py-3 text-sm text-slate-500 font-mono">{event.id.slice(0, 8)}...</td>
                 </tr>
@@ -88,7 +88,7 @@ export default function WebhooksPage() {
             </div>
             <div>
               <span className="text-slate-500">Event Type</span>
-              <div className="font-medium">{selectedEvent.event_type}</div>
+              <div className="font-medium">{selectedEvent.eventType}</div>
             </div>
             <div>
               <span className="text-slate-500">Status</span>
@@ -96,12 +96,12 @@ export default function WebhooksPage() {
             </div>
             <div>
               <span className="text-slate-500">Created</span>
-              <div className="font-medium">{formatDate(selectedEvent.created_at)}</div>
+              <div className="font-medium">{formatDate(selectedEvent.createdAt)}</div>
             </div>
           </div>
-          {selectedEvent.error_message && (
+          {selectedEvent.errorMessage && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">
-              {selectedEvent.error_message}
+              {selectedEvent.errorMessage}
             </div>
           )}
           <div>

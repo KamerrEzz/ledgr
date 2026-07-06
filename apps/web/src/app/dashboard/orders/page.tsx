@@ -9,27 +9,27 @@ import Modal from "@/components/Modal";
 
 interface Order {
   id: string;
-  resource_variant_id: string;
+  resourceVariantId: string;
   quantity: number;
-  total_cents: string;
+  totalCents: string;
   currency: string;
   status: string;
-  created_at: string;
+  createdAt: string;
   transitions?: Transition[];
 }
 
 interface Transition {
   id: string;
-  from_status: string;
-  to_status: string;
+  fromStatus: string;
+  toStatus: string;
   reason: string | null;
-  created_at: string;
+  createdAt: string;
 }
 
 interface Variant {
   id: string;
   name: string;
-  price_cents: string;
+  priceCents: string;
 }
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
@@ -108,18 +108,19 @@ export default function OrdersPage() {
     setSelectedOrder(detailed);
   };
 
-  const getVariantName = (variantId: string) => {
+  const getVariantName = (variantId: string | undefined) => {
+    if (!variantId) return "—";
     const v = variants.find((v) => v.id === variantId);
     return v?.name || variantId.slice(0, 8);
   };
 
   const orderColumns = [
     { key: "id", header: "ID", render: (item: Order) => item.id.slice(0, 8) + "..." },
-    { key: "resource_variant_id", header: "Variant", render: (item: Order) => getVariantName(item.resource_variant_id) },
+    { key: "resourceVariantId", header: "Variant", render: (item: Order) => getVariantName(item.resourceVariantId) },
     { key: "quantity", header: "Qty" },
-    { key: "total_cents", header: "Total", render: (item: Order) => formatCents(item.total_cents) },
+    { key: "totalCents", header: "Total", render: (item: Order) => formatCents(item.totalCents) },
     { key: "status", header: "Status", render: (item: Order) => <StatusBadge status={item.status} /> },
-    { key: "created_at", header: "Created", render: (item: Order) => formatDate(item.created_at) },
+    { key: "createdAt", header: "Created", render: (item: Order) => formatDate(item.createdAt) },
   ];
 
   if (loading) return <div className="text-slate-500">Loading...</div>;
@@ -172,7 +173,7 @@ export default function OrdersPage() {
             </div>
             <div>
               <span className="text-slate-500">Total</span>
-              <div className="font-medium">{formatCents(selectedOrder.total_cents)}</div>
+              <div className="font-medium">{formatCents(selectedOrder.totalCents)}</div>
             </div>
             <div>
               <span className="text-slate-500">Quantity</span>
@@ -180,7 +181,7 @@ export default function OrdersPage() {
             </div>
             <div>
               <span className="text-slate-500">Created</span>
-              <div className="font-medium">{formatDate(selectedOrder.created_at)}</div>
+              <div className="font-medium">{formatDate(selectedOrder.createdAt)}</div>
             </div>
           </div>
           {selectedOrder.transitions && selectedOrder.transitions.length > 0 && (
@@ -189,9 +190,9 @@ export default function OrdersPage() {
               <div className="space-y-2">
                 {selectedOrder.transitions.map((t) => (
                   <div key={t.id} className="flex items-center gap-3 text-sm">
-                    <span className="text-slate-500">{formatDate(t.created_at)}</span>
+                    <span className="text-slate-500">{formatDate(t.createdAt)}</span>
                     <span className="text-slate-700">
-                      {t.from_status} → {t.to_status}
+                      {t.fromStatus} → {t.toStatus}
                     </span>
                     {t.reason && <span className="text-slate-400">({t.reason})</span>}
                   </div>
@@ -217,7 +218,7 @@ export default function OrdersPage() {
               <option value="">Select a variant</option>
               {variants.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.name} — {formatCents(v.price_cents)}
+                  {v.name} — {formatCents(v.priceCents)}
                 </option>
               ))}
             </select>
