@@ -10,9 +10,9 @@ export interface Tenant {
 }
 
 const TENANTS: Tenant[] = [
-  { id: "a0000000-0000-0000-0000-000000000001", name: "Acme Corp", slug: "acme" },
-  { id: "a0000000-0000-0000-0000-000000000002", name: "Globex Inc", slug: "globex" },
-  { id: "a0000000-0000-0000-0000-000000000003", name: "Initech", slug: "initech" },
+  { id: "a0000000-0000-4000-8000-000000000001", name: "Acme Corp", slug: "acme" },
+  { id: "a0000000-0000-4000-8000-000000000002", name: "Globex Inc", slug: "globex" },
+  { id: "a0000000-0000-4000-8000-000000000003", name: "Initech", slug: "initech" },
 ];
 
 interface TenantContextValue {
